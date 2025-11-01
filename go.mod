@@ -3,3 +3,5 @@ module go-expense-tracker
 go 1.25.3
 
 require github.com/akamensky/argparse v1.4.0
+
+require gopkg.in/yaml.v3 v3.0.1
