@@ -2,6 +2,7 @@ package main
 
 import (
 	"go-expense-tracker/src"
+	"io"
 	"log"
 	"os"
 )
@@ -16,7 +17,8 @@ func main() {
 	}
 	defer file.Close()
 
-	logger := log.New(file, "", log.Ldate|log.Ltime|log.Lshortfile)
+	mw := io.MultiWriter(os.Stdout, file)
+	logger := log.New(mw, "", log.Ldate|log.Ltime|log.Lshortfile)
 	logger.SetPrefix("INFO: ")
 	logger.Println("Hello, World!")
 }
