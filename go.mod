@@ -2,4 +2,4 @@ module go-expense-tracker
 
 go 1.25.3
 
-require github.com/akamensky/argparse v1.4.0 // indirect
+require github.com/akamensky/argparse v1.4.0
