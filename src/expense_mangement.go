@@ -53,6 +53,7 @@ func idSetter(name string) int {
 		}
 		allExpenses = append(allExpenses, newCategory)
 	} else {
+		// override the existing ids
 		newId = len(allExpenses[0].Ids) + 1
 		allExpenses[0].Ids = append(allExpenses[0].Ids, newId)
 	}
