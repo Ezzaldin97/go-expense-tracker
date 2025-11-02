@@ -28,6 +28,8 @@ func main() {
 	amount := addOperation.Float("a", "amount", &argparse.Options{Required: true, Help: "Amount of the expense"})
 	listOperation := parser.NewCommand("list", "list all expenses.")
 	summaryOperation := parser.NewCommand("summary", "get a summary of expenses.")
+	setBudgetOperation := parser.NewCommand("set-budget", "set a budget for expenses.")
+	budget := setBudgetOperation.Float("b", "budget", &argparse.Options{Required: true, Help: "Budget amount"})
 	err = parser.Parse(os.Args)
 	if err != nil {
 		logger := log.New(file, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
@@ -44,5 +46,7 @@ func main() {
 		src.ListExpenses(*name, file)
 	} else if summaryOperation.Happened() {
 		src.SummarizeExpenses(*name, file)
+	} else if setBudgetOperation.Happened() {
+		src.SetBudget(*name, *budget, file)
 	}
 }

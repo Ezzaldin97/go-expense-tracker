@@ -21,7 +21,8 @@ type Expense struct {
 }
 
 type ExpenseIds struct {
-	Ids []int `yaml:"ids"`
+	Ids    []int   `yaml:"ids"`
+	Budget float64 `yaml:"budget"`
 }
 
 func idSetter(name string) int {
@@ -47,9 +48,11 @@ func idSetter(name string) int {
 	var newId int
 
 	if len(allExpenses) == 0 {
+		// it works like a constructor if no config file for the name...
 		newId = 1
 		newCategory := ExpenseIds{
-			Ids: []int{newId},
+			Ids:    []int{newId},
+			Budget: -1,
 		}
 		allExpenses = append(allExpenses, newCategory)
 	} else {
@@ -218,4 +221,59 @@ func SummarizeExpenses(name string, logsFile *os.File) {
 	}
 	logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	logger.Printf("Total Amount: $%v", totalAmount)
+}
+
+func SetBudget(name string, budget float64, logsFile *os.File) {
+	CreateDir("data")
+	CreateDir(fmt.Sprintf("data/%s", name))
+	mw := io.MultiWriter(os.Stdout, logsFile)
+	file, err := os.OpenFile(fmt.Sprintf("data/%s/config.yaml", name), os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Failed to set budget: %v", err)
+		os.Exit(1)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Failed to set budget: %v", err)
+		os.Exit(1)
+	}
+
+	var allExpenses []ExpenseIds
+	if len(data) > 0 {
+		err = yaml.Unmarshal(data, &allExpenses)
+		if err != nil {
+			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+			logger.Printf("Failed to set budget: %v", err)
+			os.Exit(1)
+		}
+	}
+
+	if len(allExpenses) == 0 {
+		// it works like a constructor if no config file for the name...
+		newCategory := ExpenseIds{
+			Ids:    []int{},
+			Budget: budget,
+		}
+		allExpenses = append(allExpenses, newCategory)
+	} else {
+		// override the existing ids
+		newExpenses := ExpenseIds{
+			Ids:    allExpenses[0].Ids,
+			Budget: budget,
+		}
+		allExpenses[0] = newExpenses
+	}
+	encoder := yaml.NewEncoder(file)
+	err = encoder.Encode(allExpenses)
+	if err != nil {
+		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Failed to set budget: %v", err)
+		os.Exit(1)
+	}
+	logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+	logger.Printf("Budget set successfully to $%.2f", budget)
 }
