@@ -26,6 +26,7 @@ func main() {
 	name := addOperation.String("n", "name", &argparse.Options{Required: true, Help: "Your Name"})
 	description := addOperation.String("d", "description", &argparse.Options{Required: true, Help: "Description of the expense"})
 	amount := addOperation.Float("a", "amount", &argparse.Options{Required: true, Help: "Amount of the expense"})
+	listOperation := parser.NewCommand("list", "list all expenses.")
 	err = parser.Parse(os.Args)
 	if err != nil {
 		logger := log.New(file, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
@@ -38,5 +39,7 @@ func main() {
 	logger.Println("Welcome to Go Expense Tracker Application")
 	if addOperation.Happened() {
 		src.ExpensesWriter(*name, *description, *amount, file)
+	} else if listOperation.Happened() {
+		logger.Println("Not Implemented Yet!!")
 	}
 }

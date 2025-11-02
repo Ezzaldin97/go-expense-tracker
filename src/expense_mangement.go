@@ -95,7 +95,7 @@ func ExpensesWriter(name string, description string, amount float64, logsFile *o
 	defer expenseFile.Close()
 	encoder := json.NewEncoder(expenseFile)
 	expense := Expense{
-		ID:          1,
+		ID:          nextId,
 		Amount:      amount,
 		Category:    "General",
 		Description: description,
