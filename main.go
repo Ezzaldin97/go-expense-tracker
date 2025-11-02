@@ -32,6 +32,10 @@ func main() {
 	budget := setBudgetOperation.Float("b", "budget", &argparse.Options{Required: true, Help: "Budget amount"})
 	deleteOperation := parser.NewCommand("delete", "delete an expense.")
 	deleteID := deleteOperation.Int("i", "id", &argparse.Options{Required: true, Help: "ID of the expense to delete"})
+	updateOperation := parser.NewCommand("update", "update an expense.")
+	updateID := updateOperation.Int("i", "id", &argparse.Options{Required: true, Help: "ID of the expense to update"})
+	updateDescription := updateOperation.String("d", "description", &argparse.Options{Required: true, Help: "New description of the expense"})
+	updateAmount := updateOperation.Float("a", "amount", &argparse.Options{Required: true, Help: "New amount of the expense"})
 	err = parser.Parse(os.Args)
 	if err != nil {
 		logger := log.New(file, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
@@ -52,5 +56,7 @@ func main() {
 		src.SetBudget(*name, *budget, file)
 	} else if deleteOperation.Happened() {
 		src.DeleteExpense(*name, *deleteID, file)
+	} else if updateOperation.Happened() {
+		src.UpdateExpense(*name, *updateID, *updateDescription, *updateAmount, file)
 	}
 }

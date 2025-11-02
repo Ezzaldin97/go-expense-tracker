@@ -6,7 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
-	"strconv"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -25,30 +25,64 @@ type ExpenseIds struct {
 	Budget float64 `yaml:"budget"`
 }
 
-func idSetter(name string) int {
-	file, err := os.OpenFile(fmt.Sprintf("data/%s/config.yaml", name), os.O_CREATE|os.O_RDWR, 0666)
+// handleError logs an error and exits the program.
+func handleError(err error, mw io.Writer, message string) {
 	if err != nil {
+		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("%s: %v", message, err)
 		os.Exit(1)
 	}
-	defer file.Close()
+}
+
+// getConfigPath returns the path to the config file.
+func getConfigPath(name string) string {
+	return filepath.Join("data", name, "config.yaml")
+}
+
+// getExpensePath returns the path to an expense file.
+func getExpensePath(name string, id int) string {
+	return filepath.Join("data", name, fmt.Sprintf("%d.json", id))
+}
+
+// readConfig reads the config.yaml file and returns the unmarshalled data.
+func readConfig(name string, mw io.Writer) ([]ExpenseIds, *os.File) {
+	configPath := getConfigPath(name)
+	file, err := os.OpenFile(configPath, os.O_RDWR|os.O_CREATE, 0666)
+	handleError(err, mw, "Failed to open config file")
 
 	data, err := io.ReadAll(file)
-	if err != nil {
-		os.Exit(1)
-	}
+	handleError(err, mw, "Failed to read config file")
 
 	var allExpenses []ExpenseIds
 	if len(data) > 0 {
 		err = yaml.Unmarshal(data, &allExpenses)
-		if err != nil {
-			os.Exit(1)
-		}
+		handleError(err, mw, "Failed to unmarshal config data")
 	}
+	return allExpenses, file
+}
+
+// writeConfig writes the config data back to the config.yaml file.
+func writeConfig(file *os.File, allExpenses []ExpenseIds, mw io.Writer) {
+	newData, err := yaml.Marshal(&allExpenses)
+	handleError(err, mw, "Failed to marshal config data")
+
+	err = file.Truncate(0)
+	handleError(err, mw, "Failed to truncate config file")
+
+	_, err = file.Seek(0, 0)
+	handleError(err, mw, "Failed to seek in config file")
+
+	_, err = file.Write(newData)
+	handleError(err, mw, "Failed to write to config file")
+}
+
+// idSetter gets the next available ID for a new expense.
+func idSetter(name string, mw io.Writer) int {
+	allExpenses, file := readConfig(name, mw)
+	defer file.Close()
 
 	var newId int
-
 	if len(allExpenses) == 0 {
-		// it works like a constructor if no config file for the name...
 		newId = 1
 		newCategory := ExpenseIds{
 			Ids:    []int{newId},
@@ -56,46 +90,37 @@ func idSetter(name string) int {
 		}
 		allExpenses = append(allExpenses, newCategory)
 	} else {
-		// override the existing ids
-		newId = len(allExpenses[0].Ids) + 1
+		if len(allExpenses[0].Ids) == 0 {
+			newId = 1
+		} else {
+			// Find the max ID and add 1 to it for the new ID.
+			maxId := 0
+			for _, id := range allExpenses[0].Ids {
+				if id > maxId {
+					maxId = id
+				}
+			}
+			newId = maxId + 1
+		}
 		allExpenses[0].Ids = append(allExpenses[0].Ids, newId)
 	}
 
-	newData, err := yaml.Marshal(&allExpenses)
-	if err != nil {
-		os.Exit(1)
-	}
-
-	err = file.Truncate(0)
-	if err != nil {
-		os.Exit(1)
-	}
-
-	_, err = file.Seek(0, 0)
-	if err != nil {
-		os.Exit(1)
-	}
-
-	_, err = file.Write(newData)
-	if err != nil {
-		os.Exit(1)
-	}
-
+	writeConfig(file, allExpenses, mw)
 	return newId
 }
 
 func ExpensesWriter(name string, description string, amount float64, logsFile *os.File) {
+	mw := io.MultiWriter(os.Stdout, logsFile)
 	CreateDir("data")
-	CreateDir(fmt.Sprintf("data/%s", name))
-	nextId := idSetter(name)
-	filename := fmt.Sprintf("data/%v/%s.json", name, strconv.Itoa(nextId))
+	CreateDir(filepath.Join("data", name))
+
+	nextId := idSetter(name, mw)
+	filename := getExpensePath(name, nextId)
+
 	expenseFile, err := os.OpenFile(filename, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		logger := log.New(os.Stderr, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Failed to open expense tracker file: %v", err)
-		os.Exit(1)
-	}
+	handleError(err, mw, "Failed to open expense tracker file")
 	defer expenseFile.Close()
+
 	encoder := json.NewEncoder(expenseFile)
 	expense := Expense{
 		ID:          nextId,
@@ -104,273 +129,132 @@ func ExpensesWriter(name string, description string, amount float64, logsFile *o
 		Description: description,
 		Date:        time.Now(),
 	}
-	mw := io.MultiWriter(os.Stdout, logsFile)
+
 	err = encoder.Encode(expense)
 	if err != nil {
 		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
 		logger.Printf("Failed to write to expense tracker file: %v", err)
+	} else {
+		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Expense added successfully (ID: %d)", nextId)
 	}
-	logger := log.New(mw, "", log.Ldate|log.Ltime|log.Lshortfile)
-	logger.SetPrefix("INFO: ")
-	logger.Printf("Expense added successfully (ID: %d)", nextId)
 }
 
 func ListExpenses(name string, logsFile *os.File) {
 	mw := io.MultiWriter(os.Stdout, logsFile)
-	file, err := os.OpenFile(fmt.Sprintf("data/%s/config.yaml", name), os.O_RDWR, 0666)
-	if err != nil {
-		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Failed to Get Expenses: %v", err)
-		os.Exit(1)
-	}
+	allExpenses, file := readConfig(name, mw)
 	defer file.Close()
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Failed to Get Expenses: %v", err)
-		os.Exit(1)
-	}
-
-	var allExpenses []ExpenseIds
-	if len(data) > 0 {
-		err = yaml.Unmarshal(data, &allExpenses)
-		if err != nil {
-			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-			logger.Printf("Failed to Get Expenses: %v", err)
-			os.Exit(1)
-		}
-	} else {
-		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("No expenses found.")
+	if len(allExpenses) == 0 || len(allExpenses[0].Ids) == 0 {
+		log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("No expenses found.")
+		return
 	}
 
 	for _, id := range allExpenses[0].Ids {
-		filename := fmt.Sprintf("data/%v/%s.json", name, strconv.Itoa(id))
-		expenseFile, err := os.OpenFile(filename, os.O_RDONLY, 0666)
+		expense, err := readExpense(name, id, mw)
 		if err != nil {
-			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-			logger.Printf("Failed to Get Expenses: %v", err)
 			continue
 		}
-		defer expenseFile.Close()
-
-		decoder := json.NewDecoder(expenseFile)
-		var expense Expense
-		err = decoder.Decode(&expense)
-		if err != nil {
-			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-			logger.Printf("Failed to Get Expenses: %v", err)
-			continue
-		}
-		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("ID: %d | Amount: %.2f | Category: %s | Description: %s | Date: %s", expense.ID, expense.Amount, expense.Category, expense.Description, expense.Date)
+		log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("ID: %d | Amount: %.2f | Category: %s | Description: %s | Date: %s", expense.ID, expense.Amount, expense.Category, expense.Description, expense.Date)
 	}
+}
+
+func readExpense(name string, id int, mw io.Writer) (*Expense, error) {
+	filename := getExpensePath(name, id)
+	expenseFile, err := os.OpenFile(filename, os.O_RDONLY, 0666)
+	if err != nil {
+		log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("Failed to open expense file: %v", err)
+		return nil, err
+	}
+	defer expenseFile.Close()
+
+	decoder := json.NewDecoder(expenseFile)
+	var expense Expense
+	err = decoder.Decode(&expense)
+	if err != nil {
+		log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("Failed to decode expense file: %v", err)
+		return nil, err
+	}
+	return &expense, nil
 }
 
 func SummarizeExpenses(name string, logsFile *os.File) {
 	mw := io.MultiWriter(os.Stdout, logsFile)
-	file, err := os.OpenFile(fmt.Sprintf("data/%s/config.yaml", name), os.O_RDWR, 0666)
-	if err != nil {
-		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Failed to Get Expenses: %v", err)
-		os.Exit(1)
-	}
+	allExpenses, file := readConfig(name, mw)
 	defer file.Close()
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Failed to Get Expenses: %v", err)
-		os.Exit(1)
-	}
-	var allExpenses []ExpenseIds
-	if len(data) > 0 {
-		err = yaml.Unmarshal(data, &allExpenses)
-		if err != nil {
-			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-			logger.Printf("Failed to Get Expenses: %v", err)
-			os.Exit(1)
-		}
-	} else {
-		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Total Expenses: $0")
+	if len(allExpenses) == 0 || len(allExpenses[0].Ids) == 0 {
+		log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("Total Expenses: $0")
+		return
 	}
 
 	totalAmount := 0.0
-
 	for _, id := range allExpenses[0].Ids {
-		filename := fmt.Sprintf("data/%v/%s.json", name, strconv.Itoa(id))
-		expenseFile, err := os.OpenFile(filename, os.O_RDONLY, 0666)
+		expense, err := readExpense(name, id, mw)
 		if err != nil {
-			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-			logger.Printf("Failed to Get Expenses: %v", err)
 			continue
 		}
-		defer expenseFile.Close()
-		decoder := json.NewDecoder(expenseFile)
-		var expense Expense
-		err = decoder.Decode(&expense)
-		if err != nil {
-			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-			logger.Printf("Failed to Get Expenses: %v", err)
-			continue
-		}
-
 		totalAmount += expense.Amount
 	}
-	logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-	logger.Printf("Total Amount: $%v", totalAmount)
+	log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("Total Amount: $%v", totalAmount)
 }
 
 func SetBudget(name string, budget float64, logsFile *os.File) {
-	CreateDir("data")
-	CreateDir(fmt.Sprintf("data/%s", name))
 	mw := io.MultiWriter(os.Stdout, logsFile)
-	file, err := os.OpenFile(fmt.Sprintf("data/%s/config.yaml", name), os.O_CREATE|os.O_RDWR, 0666)
-	if err != nil {
-		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Failed to set budget: %v", err)
-		os.Exit(1)
-	}
+	CreateDir("data")
+	CreateDir(filepath.Join("data", name))
+
+	allExpenses, file := readConfig(name, mw)
 	defer file.Close()
 
-	data, err := io.ReadAll(file)
-	if err != nil {
-		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Failed to set budget: %v", err)
-		os.Exit(1)
-	}
-
-	var allExpenses []ExpenseIds
-	if len(data) > 0 {
-		err = yaml.Unmarshal(data, &allExpenses)
-		if err != nil {
-			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-			logger.Printf("Failed to set budget: %v", err)
-			os.Exit(1)
-		}
-	}
-
 	if len(allExpenses) == 0 {
-		// it works like a constructor if no config file for the name...
 		newCategory := ExpenseIds{
 			Ids:    []int{},
 			Budget: budget,
 		}
 		allExpenses = append(allExpenses, newCategory)
 	} else {
-		// override the existing ids
-		newExpenses := ExpenseIds{
-			Ids:    allExpenses[0].Ids,
-			Budget: budget,
-		}
-		allExpenses[0] = newExpenses
+		allExpenses[0].Budget = budget
 	}
 
-	newData, err := yaml.Marshal(&allExpenses)
-	if err != nil {
-		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Failed to set budget: %v", err)
-		os.Exit(1)
-	} else {
-		err = file.Truncate(0)
-		if err != nil {
-			os.Exit(1)
-		}
-
-		_, err = file.Seek(0, 0)
-		if err != nil {
-			os.Exit(1)
-		}
-
-		_, err = file.Write(newData)
-		if err != nil {
-			os.Exit(1)
-		}
-	}
-	logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-	logger.Printf("Budget set successfully to $%.2f", budget)
+	writeConfig(file, allExpenses, mw)
+	log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("Budget set successfully to $%.2f", budget)
 }
 
 func DeleteExpense(name string, id int, logsFile *os.File) {
 	mw := io.MultiWriter(os.Stdout, logsFile)
-	file, err := os.OpenFile(fmt.Sprintf("data/%s/config.yaml", name), os.O_RDWR, 0666)
-	if err != nil {
-		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Failed to Get Expenses: %v", err)
-		os.Exit(1)
-	}
+	allExpenses, file := readConfig(name, mw)
 	defer file.Close()
 
-	data, err := io.ReadAll(file)
+	if len(allExpenses) == 0 || len(allExpenses[0].Ids) == 0 {
+		log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("No expenses found.")
+		return
+	}
+
+	indexToRemove := -1
+	for i, expenseID := range allExpenses[0].Ids {
+		if expenseID == id {
+			indexToRemove = i
+			break
+		}
+	}
+
+	if indexToRemove == -1 {
+		log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("Expense with ID %d not found.", id)
+		return
+	}
+
+	allExpenses[0].Ids = remove(allExpenses[0].Ids, indexToRemove)
+	filePath := getExpensePath(name, id)
+	err := os.Remove(filePath)
 	if err != nil {
-		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Failed to Get Expenses: %v", err)
-		os.Exit(1)
+		log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("Error removing file: %v\n", err)
 	}
 
-	var allExpenses []ExpenseIds
-	if len(data) > 0 {
-		err = yaml.Unmarshal(data, &allExpenses)
-		if err != nil {
-			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-			logger.Printf("Failed to Get Expenses: %v", err)
-			os.Exit(1)
-		}
-	} else {
-		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("No expenses found.")
-	}
+	writeConfig(file, allExpenses, mw)
+	log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("Expense with ID %d deleted successfully.", id)
+}
 
-	if len(allExpenses[0].Ids) == 0 {
-		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("No expenses found.")
-	} else {
-		indexToRemove := -1
-		for i, expenseID := range allExpenses[0].Ids {
-			if expenseID == id {
-				indexToRemove = i
-				break
-			}
-		}
+func UpdateExpense(name string, id int, description string, amount float64, logsFile *os.File) {
 
-		if indexToRemove == -1 {
-			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-			logger.Printf("Expense with ID %d not found.", id)
-			os.Exit(1)
-		}
-		allExpenses[0].Ids = remove(allExpenses[0].Ids, indexToRemove)
-		filePath := fmt.Sprintf("data/%s/%v.json", name, id)
-		err := os.Remove(filePath)
-		if err != nil {
-			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-			logger.Printf("Error removing file: %v\n", err)
-			os.Exit(1)
-		}
-	}
-
-	newData, err := yaml.Marshal(&allExpenses)
-	if err != nil {
-		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Failed to delete expense: %v", err)
-		os.Exit(1)
-	} else {
-		err = file.Truncate(0)
-		if err != nil {
-			os.Exit(1)
-		}
-
-		_, err = file.Seek(0, 0)
-		if err != nil {
-			os.Exit(1)
-		}
-
-		_, err = file.Write(newData)
-		if err != nil {
-			os.Exit(1)
-		}
-		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
-		logger.Printf("Expense with ID %d deleted successfully.", id)
-	}
 }
