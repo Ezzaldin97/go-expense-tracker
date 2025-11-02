@@ -140,7 +140,6 @@ func ListExpenses(name string, logsFile *os.File) {
 	} else {
 		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 		logger.Printf("No expenses found.")
-		return
 	}
 
 	for _, id := range allExpenses[0].Ids {
@@ -164,4 +163,59 @@ func ListExpenses(name string, logsFile *os.File) {
 		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 		logger.Printf("ID: %d | Amount: %.2f | Category: %s | Description: %s | Date: %s", expense.ID, expense.Amount, expense.Category, expense.Description, expense.Date)
 	}
+}
+
+func SummarizeExpenses(name string, logsFile *os.File) {
+	mw := io.MultiWriter(os.Stdout, logsFile)
+	file, err := os.OpenFile(fmt.Sprintf("data/%s/config.yaml", name), os.O_RDWR, 0666)
+	if err != nil {
+		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Failed to Get Expenses: %v", err)
+		os.Exit(1)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Failed to Get Expenses: %v", err)
+		os.Exit(1)
+	}
+	var allExpenses []ExpenseIds
+	if len(data) > 0 {
+		err = yaml.Unmarshal(data, &allExpenses)
+		if err != nil {
+			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+			logger.Printf("Failed to Get Expenses: %v", err)
+			os.Exit(1)
+		}
+	} else {
+		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Total Expenses: $0")
+	}
+
+	totalAmount := 0.0
+
+	for _, id := range allExpenses[0].Ids {
+		filename := fmt.Sprintf("data/%v/%s.json", name, strconv.Itoa(id))
+		expenseFile, err := os.OpenFile(filename, os.O_RDONLY, 0666)
+		if err != nil {
+			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+			logger.Printf("Failed to Get Expenses: %v", err)
+			continue
+		}
+		defer expenseFile.Close()
+		decoder := json.NewDecoder(expenseFile)
+		var expense Expense
+		err = decoder.Decode(&expense)
+		if err != nil {
+			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+			logger.Printf("Failed to Get Expenses: %v", err)
+			continue
+		}
+
+		totalAmount += expense.Amount
+	}
+	logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+	logger.Printf("Total Amount: $%v", totalAmount)
 }
