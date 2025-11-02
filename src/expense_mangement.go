@@ -267,12 +267,27 @@ func SetBudget(name string, budget float64, logsFile *os.File) {
 		}
 		allExpenses[0] = newExpenses
 	}
-	encoder := yaml.NewEncoder(file)
-	err = encoder.Encode(allExpenses)
+
+	newData, err := yaml.Marshal(&allExpenses)
 	if err != nil {
 		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
 		logger.Printf("Failed to set budget: %v", err)
 		os.Exit(1)
+	} else {
+		err = file.Truncate(0)
+		if err != nil {
+			os.Exit(1)
+		}
+
+		_, err = file.Seek(0, 0)
+		if err != nil {
+			os.Exit(1)
+		}
+
+		_, err = file.Write(newData)
+		if err != nil {
+			os.Exit(1)
+		}
 	}
 	logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	logger.Printf("Budget set successfully to $%.2f", budget)
