@@ -22,8 +22,8 @@ func main() {
 	mw := io.MultiWriter(os.Stdout, file)
 
 	parser := argparse.NewParser("go-expense-tracker", "Go Expense Tracker Terminal app")
+	name := parser.String("n", "name", &argparse.Options{Required: true, Help: "Your Name"})
 	addOperation := parser.NewCommand("add", "add an expense with a description and amount.")
-	name := addOperation.String("n", "name", &argparse.Options{Required: true, Help: "Your Name"})
 	description := addOperation.String("d", "description", &argparse.Options{Required: true, Help: "Description of the expense"})
 	amount := addOperation.Float("a", "amount", &argparse.Options{Required: true, Help: "Amount of the expense"})
 	listOperation := parser.NewCommand("list", "list all expenses.")
@@ -40,6 +40,6 @@ func main() {
 	if addOperation.Happened() {
 		src.ExpensesWriter(*name, *description, *amount, file)
 	} else if listOperation.Happened() {
-		logger.Println("Not Implemented Yet!!")
+		src.ListExpenses(*name, file)
 	}
 }
