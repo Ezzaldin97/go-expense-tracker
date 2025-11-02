@@ -277,3 +277,85 @@ func SetBudget(name string, budget float64, logsFile *os.File) {
 	logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	logger.Printf("Budget set successfully to $%.2f", budget)
 }
+
+func DeleteExpense(name string, id int, logsFile *os.File) {
+	mw := io.MultiWriter(os.Stdout, logsFile)
+	file, err := os.OpenFile(fmt.Sprintf("data/%s/config.yaml", name), os.O_RDWR, 0666)
+	if err != nil {
+		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Failed to Get Expenses: %v", err)
+		os.Exit(1)
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Failed to Get Expenses: %v", err)
+		os.Exit(1)
+	}
+
+	var allExpenses []ExpenseIds
+	if len(data) > 0 {
+		err = yaml.Unmarshal(data, &allExpenses)
+		if err != nil {
+			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+			logger.Printf("Failed to Get Expenses: %v", err)
+			os.Exit(1)
+		}
+	} else {
+		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("No expenses found.")
+	}
+
+	if len(allExpenses[0].Ids) == 0 {
+		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("No expenses found.")
+	} else {
+		indexToRemove := -1
+		for i, expenseID := range allExpenses[0].Ids {
+			if expenseID == id {
+				indexToRemove = i
+				break
+			}
+		}
+
+		if indexToRemove == -1 {
+			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+			logger.Printf("Expense with ID %d not found.", id)
+			os.Exit(1)
+		}
+		allExpenses[0].Ids = remove(allExpenses[0].Ids, indexToRemove)
+		filePath := fmt.Sprintf("data/%s/%v.json", name, id)
+		err := os.Remove(filePath)
+		if err != nil {
+			logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+			logger.Printf("Error removing file: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	newData, err := yaml.Marshal(&allExpenses)
+	if err != nil {
+		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Failed to delete expense: %v", err)
+		os.Exit(1)
+	} else {
+		err = file.Truncate(0)
+		if err != nil {
+			os.Exit(1)
+		}
+
+		_, err = file.Seek(0, 0)
+		if err != nil {
+			os.Exit(1)
+		}
+
+		_, err = file.Write(newData)
+		if err != nil {
+			os.Exit(1)
+		}
+		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Expense with ID %d deleted successfully.", id)
+	}
+}

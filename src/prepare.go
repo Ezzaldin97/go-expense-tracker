@@ -10,3 +10,7 @@ func CreateDir(name string) {
 		panic(err)
 	}
 }
+
+func remove[T comparable](slice []T, s int) []T {
+	return append(slice[:s], slice[s+1:]...)
+}
