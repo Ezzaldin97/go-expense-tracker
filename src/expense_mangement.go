@@ -255,6 +255,39 @@ func DeleteExpense(name string, id int, logsFile *os.File) {
 	log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("Expense with ID %d deleted successfully.", id)
 }
 
-func UpdateExpense(name string, id int, description string, amount float64, logsFile *os.File) {
+func UpdateExpense(name string, id int, logsFile *os.File, description string, amount float64) {
+	mw := io.MultiWriter(os.Stdout, logsFile)
+	expense, err := readExpense(name, id, mw)
+	if err != nil {
+		log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("Failed to read expense for update: %v", err)
+		return
+	}
 
+	if description != "" {
+		expense.Description = description
+	}
+
+	if amount != -1.0 {
+		expense.Amount = amount
+	}
+	expense.Date = time.Now()
+
+	filePath := getExpensePath(name, id)
+	expenseFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_TRUNC, 0666)
+	if err != nil {
+		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Failed to open expense file for update: %v", err)
+		return
+	}
+	defer expenseFile.Close()
+
+	encoder := json.NewEncoder(expenseFile)
+	err = encoder.Encode(expense)
+	if err != nil {
+		logger := log.New(mw, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Failed to encode updated expense: %v", err)
+	} else {
+		logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+		logger.Printf("Expense with ID %d updated successfully.", id)
+	}
 }

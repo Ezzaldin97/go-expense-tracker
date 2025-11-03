@@ -34,8 +34,8 @@ func main() {
 	deleteID := deleteOperation.Int("i", "id", &argparse.Options{Required: true, Help: "ID of the expense to delete"})
 	updateOperation := parser.NewCommand("update", "update an expense.")
 	updateID := updateOperation.Int("i", "id", &argparse.Options{Required: true, Help: "ID of the expense to update"})
-	updateDescription := updateOperation.String("d", "description", &argparse.Options{Required: true, Help: "New description of the expense"})
-	updateAmount := updateOperation.Float("a", "amount", &argparse.Options{Required: true, Help: "New amount of the expense"})
+	updateDescription := updateOperation.String("d", "description", &argparse.Options{Required: false, Default: "", Help: "New description of the expense"})
+	updateAmount := updateOperation.Float("a", "amount", &argparse.Options{Required: false, Default: -1.0, Help: "New amount of the expense"})
 	err = parser.Parse(os.Args)
 	if err != nil {
 		logger := log.New(file, "ERROR: ", log.Ldate|log.Ltime|log.Lshortfile)
@@ -57,6 +57,6 @@ func main() {
 	} else if deleteOperation.Happened() {
 		src.DeleteExpense(*name, *deleteID, file)
 	} else if updateOperation.Happened() {
-		src.UpdateExpense(*name, *updateID, *updateDescription, *updateAmount, file)
+		src.UpdateExpense(*name, *updateID, file, *updateDescription, *updateAmount)
 	}
 }
