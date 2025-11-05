@@ -28,6 +28,7 @@ func main() {
 	amount := addOperation.Float("a", "amount", &argparse.Options{Required: true, Help: "Amount of the expense"})
 	listOperation := parser.NewCommand("list", "list all expenses.")
 	summaryOperation := parser.NewCommand("summary", "get a summary of expenses.")
+	month := summaryOperation.Int("m", "month", &argparse.Options{Required: false, Default: -1, Help: "Month (1-12) to summarize expenses for"})
 	setBudgetOperation := parser.NewCommand("set-budget", "set a budget for expenses.")
 	budget := setBudgetOperation.Float("b", "budget", &argparse.Options{Required: true, Help: "Budget amount"})
 	deleteOperation := parser.NewCommand("delete", "delete an expense.")
@@ -51,7 +52,7 @@ func main() {
 	} else if listOperation.Happened() {
 		src.ListExpenses(*name, file)
 	} else if summaryOperation.Happened() {
-		src.SummarizeExpenses(*name, file)
+		src.SummarizeExpenses(*name, file, *month)
 	} else if setBudgetOperation.Happened() {
 		src.SetBudget(*name, *budget, file)
 	} else if deleteOperation.Happened() {

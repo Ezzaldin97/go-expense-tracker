@@ -178,8 +178,9 @@ func readExpense(name string, id int, mw io.Writer) (*Expense, error) {
 	return &expense, nil
 }
 
-func SummarizeExpenses(name string, logsFile *os.File) {
+func SummarizeExpenses(name string, logsFile *os.File, month int) {
 	mw := io.MultiWriter(os.Stdout, logsFile)
+	currentYear := time.Now().Year()
 	allExpenses, file := readConfig(name, mw)
 	defer file.Close()
 
@@ -194,9 +195,20 @@ func SummarizeExpenses(name string, logsFile *os.File) {
 		if err != nil {
 			continue
 		}
-		totalAmount += expense.Amount
+		if month >= 1 && month <= 12 {
+			if expense.Date.Year() == currentYear && int(expense.Date.Month()) == month {
+				totalAmount += expense.Amount
+			}
+		} else {
+			totalAmount += expense.Amount
+		}
 	}
-	log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile).Printf("Total Amount: $%v", totalAmount)
+	logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
+	if month >= 1 && month <= 12 {
+		logger.Printf("Total Expenses for %d: $%.2f", month, totalAmount)
+	} else {
+		logger.Printf("Total Amount: $%.2f", totalAmount)
+	}
 }
 
 func SetBudget(name string, budget float64, logsFile *os.File) {
