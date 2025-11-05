@@ -205,7 +205,7 @@ func SummarizeExpenses(name string, logsFile *os.File, month int) {
 	}
 	logger := log.New(mw, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile)
 	if month >= 1 && month <= 12 {
-		logger.Printf("Total Expenses for %d: $%.2f", month, totalAmount)
+		logger.Printf("Total Expenses for %s: $%.2f", time.Month(month).String(), totalAmount)
 	} else {
 		logger.Printf("Total Amount: $%.2f", totalAmount)
 	}
